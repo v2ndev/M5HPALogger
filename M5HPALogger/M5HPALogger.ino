@@ -9,6 +9,7 @@
 #include "BinLog.h"
 #include "Ultrasonic.h"
 #include "SHT30.h"
+#include "HallSensor.h"
 
 #define SOFTAP_SSID "M5HPALogger"
 #define SOFTAP_PASSPHRASE "M5HPALogger0812"
@@ -41,6 +42,7 @@ Ultrasonic ultrasonic(Wire, ULTRASONIC_I2C_ADDR, 50000);
 WiFiUDP udpSock;
 GNSSData gnssData;
 std::mutex gnssMutex;
+HallSensor cadenceSensor;
 
 uint32_t nextTime;
 uint8_t uiMode = 0;
@@ -79,7 +81,7 @@ void setup()
     xTaskCreateUniversal(gnssTask, "gnssTask", 4096, NULL, 1, NULL, 0);
 
     M5.Lcd.println("Initializing Hall sensor.");
-    hallSetup(36);
+    cadenceSensor.begin(36, FALLING);
 
     M5.Lcd.println("Initializing Environment sensor.");
     sht30.Update();
@@ -115,7 +117,7 @@ void loop()
     float cTemp, humidity;
     sht30.Read(cTemp, humidity);
 
-    float cadence = getHallHz() * 60;
+    float cadence = cadenceSensor.getFrequency() * 60;
 
     // update sensor
     sht30.Update();
@@ -353,33 +355,4 @@ void printDouble(int line, char *name, double value)
     M5.Lcd.printf(name);
     M5.Lcd.setCursor(100, y);
     M5.Lcd.printf("%12.7lf", value);
-}
-
-volatile uint32_t hallLastMills;
-volatile uint32_t hallDuration;
-
-void hallInterrupt(void *p)
-{
-    uint32_t currentMillis = millis();
-    uint32_t duration = currentMillis - hallLastMills;
-    if (duration >= 100) {
-        hallDuration = duration;
-        hallLastMills = currentMillis;
-    }
-}
-
-void hallSetup(const uint8_t pin)
-{
-    hallLastMills = 0;
-    hallDuration = 0;
-    pinMode(pin, INPUT);
-    attachInterruptArg(pin, hallInterrupt, NULL, FALLING);
-}
-
-float getHallHz(void)
-{
-    uint32_t currentMillis = millis();
-    uint32_t duration = currentMillis - hallLastMills;
-    float hallHz = hallDuration > 0 ? (1000.0f / hallDuration) : 0.0f;
-    return duration < 2000 ? hallHz : 0.0f;
 }
